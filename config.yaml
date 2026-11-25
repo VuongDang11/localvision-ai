@@ -1,0 +1,37 @@
+# Camera list. source can be:
+#   - a webcam index:   0
+#   - a video file:     data/sample_videos/front_door.mp4
+#   - an RTSP URL:      rtsp://192.168.1.50:554/stream1
+
+cameras:
+  - id: front_door
+    name: Front Door
+    source: data/sample_videos/front_door.mp4
+    loop: true
+    realtime: true
+
+  - id: driveway
+    name: Driveway
+    source: data/sample_videos/driveway.mp4
+    loop: true
+    realtime: true
+
+  - id: back_yard
+    name: Back Yard
+    source: data/sample_videos/back_yard.mp4
+    loop: true
+    realtime: true
+
+  # Record later:
+  # - id: side_yard
+  #   name: Side Yard
+  #   source: data/sample_videos/side_yard.mp4
+  #   loop: true
+  #   realtime: true
+
+  # Add more cameras once you have the videos:
+  # - id: driveway
+  #   name: Driveway
+  #   source: data/sample_videos/driveway.mp4
+  #   loop: true
+  #   realtime: true

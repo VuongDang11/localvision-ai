@@ -1,0 +1,6 @@
+opencv-python
+numpy
+pytest>=7.0
+fastapi
+uvicorn[standard]
+httpx2

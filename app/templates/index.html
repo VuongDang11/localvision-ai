@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LocalVision AI</title>
+  <link rel="icon" href="data:,">
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, sans-serif;
+      background: #111;
+      color: #eee;
+    }
+    header {
+      padding: 16px 24px;
+      border-bottom: 1px solid #333;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 16px;
+      padding: 24px;
+    }
+
+    /* Camera tile */
+    .camera {
+      background: #1c1c1c;
+      border-radius: 8px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .camera:hover {
+      transform: scale(1.02);
+      box-shadow: 0 0 0 2px #4da3ff;
+    }
+    .camera-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 6px 12px;
+    }
+    .camera-header h2 {
+      margin: 0;
+      font-size: 14px;
+    }
+    .camera img {
+      display: block;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      object-fit: contain;
+      background: #000;
+    }
+    button {
+      background: #2a2a2a;
+      color: #eee;
+      border: 1px solid #444;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    button:hover {
+      border-color: #4da3ff;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: wait;
+    }
+
+    /* Popped-up tile */
+    .camera.popped {
+      position: fixed;
+      inset: 5vh 5vw;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      transform: none;
+      box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.85);
+    }
+    .camera.popped img {
+      flex: 1;
+      height: 100%;
+      aspect-ratio: auto;
+    }
+
+    /* Events panel */
+    .events {
+      padding: 0 24px 24px;
+    }
+    .events h2 {
+      font-size: 16px;
+    }
+    #event-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .event {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      background: #1c1c1c;
+      border-radius: 8px;
+      padding: 8px;
+    }
+    .event img {
+      width: 128px;
+      aspect-ratio: 16 / 9;
+      object-fit: cover;
+      border-radius: 4px;
+      background: #000;
+    }
+    .event-meta {
+      font-size: 12px;
+      color: #aaa;
+    }
+    .event-type {
+      font-weight: 600;
+      color: #4da3ff;
+      text-transform: uppercase;
+    }
+    .event-alert {
+      margin-top: 4px;
+      font-size: 14px;
+    }
+    .empty {
+      color: #777;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>LocalVision AI</h1>
+  </header>
+
+  <main class="grid" id="camera-grid"></main>
+
+  <section class="events">
+    <h2>Events</h2>
+    <ul id="event-list"></ul>
+  </section>
+
+  <script>
+    // ---------- Popup ----------
+    function closeAllPopups() {
+      document.querySelectorAll(".camera.popped").forEach((section) => {
+        section.classList.remove("popped");
+      });
+    }
+
+    function togglePopup(selectedSection) {
+      const wasPopped = selectedSection.classList.contains("popped");
+      closeAllPopups();
+      if (!wasPopped) {
+        selectedSection.classList.add("popped");
+      }
+    }
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        closeAllPopups();
+      }
+    });
+
+    // ---------- Camera buttons ----------
+    function makeButton(label, onClick) {
+      const button = document.createElement("button");
+      button.textContent = label;
+      button.addEventListener("click", async (event) => {
+        // Stop the click from also opening the popup.
+        event.stopPropagation();
+        button.disabled = true;
+        try {
+          await onClick(button);
+        } finally {
+          button.disabled = false;
+        }
+      });
+      return button;
+    }
+
+    async function takeSnapshot(cameraId) {
+      const response = await fetch(`/api/cameras/${cameraId}/snapshot`, { method: "POST" });
+      const result = await response.json();
+      if (response.ok) {
+        window.open(result.snapshot_url, "_blank");
+      } else {
+        alert(result.detail);
+      }
+    }
+
+    async function analyzeNow(cameraId, button) {
+      button.textContent = "Analyzing...";
+      const response = await fetch(`/api/cameras/${cameraId}/analyze`, { method: "POST" });
+      const result = await response.json();
+      button.textContent = "Analyze";
+
+      if (!response.ok) {
+        alert(result.detail);
+      } else if (result.event === null) {
+        alert(result.message);
+      }
+      await loadEvents();
+    }
+
+    // ---------- Cameras ----------
+    async function loadCameras() {
+      const response = await fetch("/api/cameras");
+      const cameras = await response.json();
+      const grid = document.getElementById("camera-grid");
+
+      for (const camera of cameras) {
+        const section = document.createElement("section");
+        section.className = "camera";
+
+        const headerRow = document.createElement("div");
+        headerRow.className = "camera-header";
+
+        const title = document.createElement("h2");
+        title.textContent = camera.name;
+
+        const buttons = document.createElement("div");
+        buttons.append(
+          makeButton("Snapshot", () => takeSnapshot(camera.id)),
+          makeButton("Analyze", (button) => analyzeNow(camera.id, button)),
+        );
+
+        headerRow.append(title, buttons);
+
+        const image = document.createElement("img");
+        image.src = `/video_feed/${camera.id}`;
+        image.alt = `${camera.name} live feed`;
+
+        section.append(headerRow, image);
+        section.addEventListener("click", () => togglePopup(section));
+        grid.append(section);
+      }
+    }
+
+    // ---------- Events ----------
+    function renderEvent(event) {
+      const item = document.createElement("li");
+      item.className = "event";
+
+      const thumbnail = document.createElement("img");
+      thumbnail.src = event.snapshot_url;
+      thumbnail.alt = "Event snapshot";
+
+      const details = document.createElement("div");
+
+      const meta = document.createElement("div");
+      meta.className = "event-meta";
+
+      const time = new Date(event.timestamp).toLocaleTimeString();
+      const triggerLabel = event.trigger === "manual" ? " · manual" : "";
+      meta.textContent = `${time} · ${event.camera_name}${triggerLabel} · `;
+
+      const type = document.createElement("span");
+      type.className = "event-type";
+      type.textContent = event.event_type;
+      meta.append(type);
+
+      const alertText = document.createElement("div");
+      alertText.className = "event-alert";
+      // The VLM wrote this text, so always use textContent.
+      alertText.textContent = event.alert;
+
+      details.append(meta, alertText);
+      item.append(thumbnail, details);
+      return item;
+    }
+
+
+    let lastRenderedEventId;
+    
+    async function loadEvents() {
+      const response = await fetch("/api/events?limit=20");
+      const events = await response.json();
+
+      const newestEventId = events.length > 0 ? events[0].event_id : null;
+      if (newestEventId === lastRenderedEventId) {
+        return;   // nothing new: keep the current list and skip the image requests
+      }
+      lastRenderedEventId = newestEventId;
+
+      const list = document.getElementById("event-list");
+
+
+      list.replaceChildren();
+
+      if (events.length === 0) {
+        const empty = document.createElement("li");
+        empty.className = "empty";
+        empty.textContent = "No events yet. The Analyzer checks each camera every 10 seconds.";
+        list.append(empty);
+        return;
+      }
+
+      for (const event of events) {
+        list.append(renderEvent(event));
+      }
+    }
+
+    loadCameras();
+    loadEvents();
+    setInterval(loadEvents, 3000);   // refresh the events panel every 3 seconds
+  </script>
+</body>
+</html>
